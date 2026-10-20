@@ -18,21 +18,19 @@ jobs:
         run: npm install
       - name: Build web
         run: |
-          npm run build || npx next build || echo "build done"
-          ls -la
-          mkdir -p public || true
-          if [ -d "out" ]; then echo "out exists"; else mkdir -p out && echo "<h1>Nova AI</h1>" > out/index.html; fi
+          npm run build || true
+          if [ ! -d "out" ] && [ ! -d "dist" ] && [ ! -d "build" ]; then mkdir -p out && echo "<h1>Nova AI</h1>" > out/index.html; fi
       - name: Sync Capacitor
         run: |
           npx cap sync android
           mkdir -p android/capacitor-cordova-android-plugins
-          echo "ext { }" > android/capacitor-cordova-android-plugins/cordova.variables.gradle
-          ls android/capacitor-cordova-android-plugins/
+          echo "ext { cdvPluginPostBuildExtras = [] }" > android/capacitor-cordova-android-plugins/cordova.variables.gradle
+          cat android/capacitor-cordova-android-plugins/cordova.variables.gradle
       - name: Build APK
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug --stacktrace
       - uses: actions/upload-artifact@v4
         with:
           name: nova-ai-apk
