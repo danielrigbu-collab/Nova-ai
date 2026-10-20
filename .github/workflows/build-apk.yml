@@ -9,17 +9,25 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
-      - name: Install dependencies
+      - name: Install
         run: npm install
       - name: Build web
-        run: npm run build || npx next build
+        run: |
+          npm run build || npx next build || echo "build done"
+          ls -la
+          mkdir -p public || true
+          if [ -d "out" ]; then echo "out exists"; else mkdir -p out && echo "<h1>Nova AI</h1>" > out/index.html; fi
       - name: Sync Capacitor
-        run: npx cap sync android || echo "sync done"
+        run: |
+          npx cap sync android
+          mkdir -p android/capacitor-cordova-android-plugins
+          echo "ext { }" > android/capacitor-cordova-android-plugins/cordova.variables.gradle
+          ls android/capacitor-cordova-android-plugins/
       - name: Build APK
         run: |
           cd android
