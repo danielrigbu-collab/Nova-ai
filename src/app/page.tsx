@@ -3,14 +3,14 @@ import { useState } from "react";
 
 export default function Home() {
   const [messages, setMessages] = useState([
-    { role: "ai", text: "Hey, I'm Nova AI ✨ Your super assistant. What should we build today?" }
+    { role: "ai", text: "Hey, I'm DevCraft AI ✨ Your super assistant. What should we build today?" }
   ]);
   const [input, setInput] = useState("");
 
   const sendMessage = () => {
     if (!input.trim()) return;
     const userMsg = { role: "user", text: input };
-    const aiMsg = { role: "ai", text: "Nova received: \"" + input + "\" — I'm ready! Connect your AI API next." };
+    const aiMsg = { role: "ai", text: "DevCraft received: \"" + input + "\" — I'm ready! Connect your AI API next." };
     setMessages([...messages, userMsg, aiMsg]);
     setInput("");
   };
@@ -26,7 +26,7 @@ export default function Home() {
     }}>
       {/* Header */}
       <div style={{ padding: "20px", textAlign: "center", borderBottom: "1px solid #222" }}>
-        <h1 style={{ fontSize: "22px", fontWeight: "800", letterSpacing: "-0.5px" }}>NOVA AI</h1>
+        <h1 style={{ fontSize: "22px", fontWeight: "800", letterSpacing: "-0.5px" }}>DEVCRAFT AI</h1>
         <p style={{ fontSize: "12px", color: "#888", marginTop: "4px" }}>Your AI Companion</p>
       </div>
 
@@ -53,7 +53,7 @@ export default function Home() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-          placeholder="Ask Nova anything..."
+          placeholder="Ask DevCraft anything..."
           style={{
             flex: 1,
             background: "#111",
