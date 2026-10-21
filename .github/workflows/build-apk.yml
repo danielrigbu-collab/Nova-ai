@@ -21,9 +21,6 @@ jobs:
         with:
           node-version: 20
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Install deps
         run: npm ci
 
@@ -37,18 +34,15 @@ jobs:
 
       - name: FORCE Rename to DevCraft AI
         run: |
-          echo "Before:"
           cat android/app/src/main/res/values/strings.xml
           sed -i 's/Nova AI/DevCraft AI/g' android/app/src/main/res/values/strings.xml
-          sed -i 's/>Nova</>DevCraft AI</g' android/app/src/main/res/values/strings.xml || true
-          echo "After:"
           cat android/app/src/main/res/values/strings.xml
 
       - name: Build Android
         run: |
           chmod +x android/gradlew
           cd android
-          ./gradlew assembleDebug --stacktrace
+          ./gradlew assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
