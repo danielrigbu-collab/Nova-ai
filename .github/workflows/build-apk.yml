@@ -30,6 +30,15 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
+      - name: FORCE Rename to DevCraft AI
+        run: |
+          echo "Before:"
+          cat android/app/src/main/res/values/strings.xml
+          sed -i 's/Nova AI/DevCraft AI/g' android/app/src/main/res/values/strings.xml
+          sed -i 's/>Nova</>DevCraft AI</g' android/app/src/main/res/values/strings.xml || true
+          echo "After:"
+          cat android/app/src/main/res/values/strings.xml
+
       - name: Build Android
         run: |
           chmod +x android/gradlew
