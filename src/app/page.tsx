@@ -11,20 +11,17 @@ export default function Home() {
 
   const sendMessage = async () => {
     if (!input.trim() || loading) return;
-    
     const userMsg = { role: "user", text: input };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
     const prompt = input;
     setInput("");
     setLoading(true);
-
     try {
       const genAI = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY!);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
       const result = await model.generateContent(prompt);
       const aiText = result.response.text();
-      
       setMessages([...newMessages, { role: "ai", text: aiText }]);
     } catch (e: any) {
       setMessages([...newMessages, { role: "ai", text: "Error: " + e.message }]);
@@ -44,16 +41,8 @@ export default function Home() {
         {loading && <div className="p-3 bg-zinc-800 rounded-xl">DevCraft is thinking...</div>}
       </div>
       <div className="flex gap-2">
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-          placeholder="Ask DevCraft..."
-          className="flex-1 p-3 rounded-xl bg-zinc-900 border border-zinc-700 outline-none"
-        />
-        <button onClick={sendMessage} className="bg-blue-600 px-6 rounded-xl font-bold">
-          {loading ? "..." : "Send"}
-        </button>
+        <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendMessage()} placeholder="Ask DevCraft..." className="flex-1 p-3 rounded-xl bg-zinc-900 border border-zinc-700 outline-none" />
+        <button onClick={sendMessage} className="bg-blue-600 px-6 rounded-xl font-bold">{loading ? "..." : "Send"}</button>
       </div>
     </main>
   );
