@@ -27,6 +27,7 @@ jobs:
       - name: Build web
         run: npm run build
         env:
+          NEXT_PUBLIC_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           VITE_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
       - name: Sync Capacitor
