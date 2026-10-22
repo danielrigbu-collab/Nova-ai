@@ -1,68 +1,78 @@
-'use client';
-import { useState, useRef, useEffect } from 'react';
+"use client";
+import { useState, useRef } from "react";
 
 export default function Page() {
-  const [messages, setMessages] = useState<{role:string, text:string, img?:string}[]>(()=>{
-    if(typeof window!=='undefined'){ const s=localStorage.getItem('dc_history'); return s?JSON.parse(s):[] } return [];
-  });
-  const [input, setInput] = useState('');
+  const [messages, setMessages] = useState<any[]>([]);
+  const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [selectedImg, setSelectedImg] = useState<string|null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const listRef = useRef<HTMLDivElement>(null);
-  useEffect(()=>{ localStorage.setItem('dc_history', JSON.stringify(messages)); listRef.current?.scrollTo(0, listRef.current.scrollHeight); }, [messages]);
+  const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 
-  function onFile(e:any){
-    const file = e.target.files?.[0]; if(!file) return;
-    const r = new FileReader(); r.onload=()=>setSelectedImg(r.result as string); r.readAsDataURL(file);
-  }
-
-  async function send() {
-    if(!input.trim() && !selectedImg) return;
-    const userMsg = input; const imgToSend = selectedImg;
-    setMessages(m => [...m, {role:'user', text: userMsg || 'Analyze this', img: imgToSend || undefined}]);
-    setInput(''); setSelectedImg(null); setLoading(true);
-    try {
-      const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-      const parts:any[] = [{ text: userMsg || "Describe this image" }];
-      if(imgToSend){
-        parts.push({ inline_data: { mime_type: "image/jpeg", data: imgToSend.split(',')[1] }});
-      }
-      // USE 3.8-flash as Google told you!
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`, {
+  async function callGemini(text: string, model: string) {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contents: [{ parts }] })
-      });
-      const data = await res.json();
-      if(data.error) throw new Error(data.error.message);
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "No response";
-      setMessages(m => [...m, {role:'ai', text }]);
-    } catch(e:any){ setMessages(m => [...m, {role:'ai', text: "Error: " + e.message}]); }
+        body: JSON.stringify({ contents: [{ parts: [{ text }] }] }),
+      }
+    );
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || "API Error");
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  }
+
+  async function sendMessage() {
+    if (!input.trim() || loading) return;
+    const userText = input;
+    setInput("");
+    setMessages(p => [...p, { role: "user", text: userText }]);
+    setLoading(true);
+
+    try {
+      let botText = "";
+      try {
+        // 1. TRY 3.8 FLASH FIRST - FAST
+        botText = await callGemini(userText, "gemini-3.8-flash");
+      } catch (e: any) {
+        if (e.message.includes("high demand") || e.message.includes("overloaded")) {
+          await new Promise(r => setTimeout(r, 2000)); // wait 2s
+          try {
+            botText = await callGemini(userText, "gemini-3.8-flash"); // retry
+          } catch {
+            // 2. FALLBACK TO 2.5 FLASH - INSTANT
+            botText = await callGemini(userText, "gemini-2.5-flash");
+          }
+        } else throw e;
+      }
+      setMessages(p => [...p, { role: "bot", text: botText }]);
+    } catch (err: any) {
+      setMessages(p => [...p, { role: "bot", text: `Error: ${err.message}` }]);
+    }
     setLoading(false);
   }
 
   return (
-    <div style={{display:'flex', flexDirection:'column', height:'100vh', background:'#000', color:'#fff'}}>
-      <div style={{padding:'16px', textAlign:'center', borderBottom:'1px solid #222', fontWeight:'bold'}}>DEVCRAFT AI<br/><span style={{fontWeight:'normal', fontSize:'12px', opacity:0.6}}>Your AI Companion</span></div>
-      <div ref={listRef} style={{flex:1, overflowY:'auto', padding:'16px', display:'flex', flexDirection:'column', gap:'12px'}}>
-        {messages.length===0 && <div style={{background:'#1e1e1e', padding:'12px 16px', borderRadius:'16px', maxWidth:'85%'}}>Hey, I'm DevCraft AI ✨ Your super assistant. What should we build today?</div>}
+    <div className="flex flex-col h-screen bg-black text-white">
+      <div className="p-4 text-center border-b border-zinc-800">
+        <h1 className="font-bold text-xl">DEVCRAFT AI</h1>
+        <p className="text-xs text-zinc-400">Powered by 3.8 Flash + 2.5 Flash fallback</p>
+      </div>
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.map((m,i)=>(
-          <div key={i} style={{alignSelf: m.role==='user'?'flex-end':'flex-start', background: m.role==='user'?'#3b82f6':'#1e1e1e', color:'#fff', padding:'12px 14px', borderRadius:'16px', maxWidth:'88%'}}>
-            {m.img && <img src={m.img} style={{maxWidth:'100%', borderRadius:'8px', marginBottom:'6px'}} />}
-            {m.text}
+          <div key={i} className={`flex ${m.role==="user"?"justify-end":"justify-start"}`}>
+            <div className={`px-4 py-2 rounded-2xl max-w-[80%] ${m.role==="user"?"bg-blue-500":"bg-zinc-800"}`}>{m.text}</div>
           </div>
         ))}
-        {loading && <div style={{opacity:0.6}}>Thinking with 3.8 Flash...</div>}
+        {loading && <div className="text-zinc-500 text-sm">Thinking with 3.8 Flash...</div>}
       </div>
-      {selectedImg && <div style={{padding:'8px 16px'}}><img src={selectedImg} style={{height:'60px', borderRadius:'8px'}} /><button onClick={()=>setSelectedImg(null)} style={{marginLeft:'8px', background:'#333', color:'#fff', border:'none', borderRadius:'8px', padding:'4px 10px'}}>X</button></div>}
-      <div style={{padding:'12px', display:'flex', gap:'8px', borderTop:'1px solid #222', background:'#000', alignItems:'center'}}>
-        <div style={{flex:1, position:'relative', display:'flex', alignItems:'center'}}>
-          <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&send()} placeholder="Ask DevCraft anything..." style={{flex:1, width:'100%', background:'#111', border:'1px solid #333', borderRadius:'24px', padding:'14px 48px 14px 16px', color:'#fff', outline:'none'}} />
-          <button onClick={()=>fileRef.current?.click()} style={{position:'absolute', right:'8px', background:'transparent', border:'none', fontSize:'20px', cursor:'pointer'}}>📎</button>
+      <div className="p-3 border-t border-zinc-800 flex gap-2 items-center">
+        <div className="flex-1 bg-zinc-900 rounded-full flex items-center px-4">
+          <input className="flex-1 bg-transparent py-3 outline-none" placeholder="Ask anything..." value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendMessage()} />
+          <button onClick={()=>fileRef.current?.click()} className="ml-2 text-xl">📎</button>
+          <input type="file" ref={fileRef} hidden />
         </div>
-        <input ref={fileRef} type="file" accept="image/*" onChange={onFile} style={{display:'none'}} />
-        <button onClick={send} style={{background:'#fff', color:'#000', borderRadius:'24px', padding:'12px 20px', fontWeight:'bold', border:'none'}}>Send</button>
+        <button onClick={sendMessage} className="bg-white text-black px-5 py-3 rounded-full font-bold">Send</button>
       </div>
     </div>
   );
