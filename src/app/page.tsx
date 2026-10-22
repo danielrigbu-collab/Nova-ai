@@ -1,89 +1,57 @@
-"use client";
-import { useState } from "react";
+'use client';
+import { useState, useRef, useEffect } from 'react';
 import { GoogleGenAI } from "@google/genai";
 
-type Msg = { role: "user" | "ai"; text: string };
-
-export default function Home() {
-  const [messages, setMessages] = useState<Msg[]>([
-    { role: "ai", text: "Hey, I'm DevCraft AI ✨ Your super assistant. What should we build today?" }
-  ]);
-  const [input, setInput] = useState("");
+export default function Page() {
+  const [messages, setMessages] = useState<{role:string, text:string}[]>(()=>{
+    if(typeof window!=='undefined'){ const s=localStorage.getItem('dc_history'); return s?JSON.parse(s):[] } return [];
+  });
+  const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const listRef = useRef<HTMLDivElement>(null);
 
-  const sendMessage = async () => {
-    if (!input.trim() || loading) return;
-    const userMsg: Msg = { role: "user", text: input };
-    const newMessages = [...messages, userMsg];
-    setMessages(newMessages);
-    const prompt = input;
-    setInput("");
+  useEffect(()=>{ localStorage.setItem('dc_history', JSON.stringify(messages)); listRef.current?.scrollTo(0, listRef.current.scrollHeight); }, [messages]);
+
+  async function send() {
+    if(!input.trim()) return;
+    const userMsg = input;
+    setMessages(m => [...m, {role:'user', text: userMsg}]);
+    setInput('');
     setLoading(true);
-
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY! });
-      
-      // PRO v1 model - gemini-3.8-flash (stable)
-      let response;
-      try {
-        response = await ai.models.generateContent({
-          model: "gemini-3.8-flash",
-          contents: prompt,
-        });
-      } catch {
-        // Fallback if your account has 3.5
-        response = await ai.models.generateContent({
-          model: "gemini-3.5-flash",
-          contents: prompt,
-        });
-      }
-
-      const aiText = response.text || "No response";
-      setMessages([...newMessages, { role: "ai", text: aiText }]);
-
-    } catch (e: any) {
-      setMessages([...newMessages, { role: "ai", text: "Error: " + e.message }]);
+      const result = await ai.models.generateContent({ model: "gemini-2.5-flash", contents: userMsg });
+      setMessages(m => [...m, {role:'ai', text: result.text || "No response"}]);
+    } catch(e:any) {
+      setMessages(m => [...m, {role:'ai', text: "Error: " + e.message}]);
     }
     setLoading(false);
-  };
+  }
+
+  function copyText(t:string){ navigator.clipboard.writeText(t); }
 
   return (
-    <main className="flex flex-col h-screen bg-[#0a0a0a] text-white">
-      {/* Header - EXACT like your screenshot */}
-      <div className="text-center py-6 border-b border-zinc-800">
-        <h1 className="text-2xl font-bold tracking-wide">DEVCRAFT AI</h1>
-        <p className="text-zinc-500 text-sm mt-1">Your AI Companion</p>
+    <div style={{display:'flex', flexDirection:'column', height:'100vh', background:'#000', color:'#fff'}}>
+      <div style={{padding:'14px', display:'flex', justifyContent:'space-between', borderBottom:'1px solid #222'}}>
+        <b>DevCraft AI Pro v2</b>
+        <button onClick={()=>{if(confirm('Clear history?')){setMessages([]);localStorage.removeItem('dc_history')}}} style={{background:'transparent', color:'#888', border:'none'}}>Clear</button>
       </div>
 
-      {/* Chat */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map((m, i) => (
-          <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div className={`px-4 py-3 rounded-2xl max-w-[85%] text-[15px] leading-relaxed ${m.role === "user" ? "bg-white text-black font-medium" : "bg-zinc-800 text-zinc-100"}`}>
-              {m.text}
-            </div>
+      <div ref={listRef} style={{flex:1, overflowY:'auto', padding:'16px', display:'flex', flexDirection:'column', gap:'12px'}}>
+        {messages.length===0 && <div style={{opacity:0.5, textAlign:'center', marginTop:'40%'}}>Ask anything — text, code, images concept</div>}
+        {messages.map((m,i)=>(
+          <div key={i} style={{alignSelf: m.role==='user'?'flex-end':'flex-start', background: m.role==='user'?'#fff':'#1e1e1e', color: m.role==='user'?'#000':'#fff', padding:'12px 14px', borderRadius:'16px', maxWidth:'88%', whiteSpace:'pre-wrap', position:'relative'}}>
+            {m.text}
+            {m.role==='ai' && <button onClick={()=>copyText(m.text)} style={{marginTop:'8px', display:'block', background:'#333', color:'#fff', border:'none', borderRadius:'8px', padding:'4px 10px', fontSize:'12px'}}>Copy</button>}
           </div>
         ))}
-        {loading && (
-          <div className="flex justify-start">
-            <div className="px-4 py-3 rounded-2xl bg-zinc-800 text-zinc-400">DevCraft is thinking...</div>
-          </div>
-        )}
+        {loading && <div style={{opacity:0.6}}>Thinking with 2.5 Flash...</div>}
       </div>
 
-      {/* Input - FIXED DOWN like your screenshot */}
-      <div className="p-4 flex gap-3 items-center bg-[#0a0a0a] border-t border-zinc-900">
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-          placeholder="Ask DevCraft anything..."
-          className="flex-1 px-5 py-3.5 rounded-full bg-zinc-900 border border-zinc-800 outline-none text-white placeholder-zinc-500"
-        />
-        <button onClick={sendMessage} className="bg-white text-black px-7 py-3.5 rounded-full font-bold text-[15px]">
-          {loading ? "..." : "Send"}
-        </button>
+      <div style={{padding:'12px', display:'flex', gap:'8px', borderTop:'1px solid #222', background:'#000'}}>
+        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&send()} placeholder="Ask DevCraft AI..." style={{flex:1, background:'#111', border:'1px solid #333', borderRadius:'24px', padding:'12px 16px', color:'#fff', outline:'none'}} />
+        <button onClick={send} style={{background:'#fff', color:'#000', borderRadius:'24px', padding:'0 20px', fontWeight:'bold', border:'none'}}>Send</button>
       </div>
-    </main>
+    </div>
   );
 }
