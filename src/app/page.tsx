@@ -1,80 +1,109 @@
 "use client";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-export default function Page() {
-  const [messages, setMessages] = useState<any[]>([
-    { role: "bot", text: "Hey, I'm DevCraft AI ✨ Your super assistant. What should we build today?" }
+type Message = { role: 'user' | 'assistant'; content: string };
+
+export default function Home() {
+  const [messages, setMessages] = useState<Message[]>([
+    { role: 'assistant', content: 'Hi! I am DevCraft AI. Ask me anything - math, code, or questions!' }
   ]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+  const [input, setInput] = useState('');
+  const [isThinking, setIsThinking] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
-  async function tryModel(model: string, text: string) {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contents: [{ parts: [{ text }] }] }),
-      }
-    );
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error?.message || JSON.stringify(data));
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-  }
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
-  async function callGemini(text: string) {
-    if (!apiKey) throw new Error("API_KEY missing - add GEMINI_API_KEY in GitHub Secrets!");
-    // Try YOUR wanted 3.8 first, if fails use real 2.0
-    try {
-      return await tryModel("gemini-3.8-flash", text);
-    } catch (e: any) {
-      console.log("3.8 failed, falling back to 2.0", e.message);
-      return await tryModel("gemini-2.0-flash", text);
+  const handleSend = async (text: string) => {
+    if (!text.trim()) return;
+    const userText = text.trim();
+    setMessages(prev => [...prev, { role: 'user', content: userText }]);
+    setInput('');
+    setIsThinking(true);
+
+    // 1. INSTANT MATH - 0.05s, NO API CALL
+    const mathRegex = /^[\d\s+\-*/().%]+$/;
+    if (mathRegex.test(userText) && /[+\-*/]/.test(userText)) {
+      try {
+        // Safe eval
+        const result = Function(`"use strict"; return (${userText})`)();
+        if (typeof result === 'number' && isFinite(result)) {
+          setMessages(prev => [...prev, { role: 'assistant', content: String(result) }]);
+          setIsThinking(false);
+          return;
+        }
+      } catch {}
     }
-  }
 
-  async function sendMessage() {
-    if (!input.trim() || loading) return;
-    const text = input;
-    setInput("");
-    setMessages(p => [...p, { role: "user", text }]);
-    setLoading(true);
+    // 2. INSTANT DATE - 0.05s, NO API CALL
+    const lower = userText.toLowerCase();
+    if (lower.includes("today") && lower.includes("date") || lower === "date" || lower.includes("what day is it")) {
+      const today = new Date().toLocaleDateString('en-US', { 
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
+      });
+      setMessages(prev => [...prev, { role: 'assistant', content: `Today's date is ${today}.` }]);
+      setIsThinking(false);
+      return;
+    }
+
+    // 3. REAL AI - Call Gemini
     try {
-      const botText = await callGemini(text);
-      setMessages(p => [...p, { role: "bot", text: botText }]);
+      const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+      if (!apiKey) throw new Error("API Key missing");
+      
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      
+      const todayStr = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+      const systemPrompt = `You are DevCraft AI, a helpful AI built by DevCraft. Today's date is ${todayStr}. Be concise, friendly, and helpful. Answer directly.`;
+
+      const result = await model.generateContent(`${systemPrompt}\n\nUser: ${userText}\nAssistant:`);
+      const response = result.response.text();
+      
+      setMessages(prev => [...prev, { role: 'assistant', content: response }]);
     } catch (err: any) {
-      setMessages(p => [...p, { role: "bot", text: "Error: " + err.message.slice(0,250) }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${err.message}. Check your API key in GitHub Secrets.` }]);
     } finally {
-      setLoading(false); // THIS fixes stuck forever
+      setIsThinking(false);
     }
-  }
+  };
 
   return (
-    <div className="flex flex-col h-screen bg-[#0a0a0a] text-white">
-      <div className="py-8 text-center border-b border-zinc-800/50">
-        <h1 className="font-black text-3xl">DEVCRAFT AI</h1>
-        <p className="text-zinc-500 mt-1 text-sm">Your AI Companion</p>
+    <main className="flex flex-col h-screen bg-black text-white">
+      {/* Header */}
+      <div className="p-4 border-b border-zinc-800 text-center font-bold text-lg tracking-widest">
+        DEVCRAFT AI
       </div>
+
+      {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((m, i) => (
-          <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div className={`px-5 py-3 rounded-2xl max-w-[85%] ${m.role === "user" ? "bg-[#3b82f6] rounded-br-md" : "bg-zinc-800 rounded-bl-md"}`}>{m.text}</div>
+          <div key={i} className={`max-w-[85%] p-3 rounded-2xl text-[15px] leading-relaxed ${m.role === 'user' ? 'bg-white text-black ml-auto' : 'bg-zinc-900 text-zinc-100'}`}>
+            {m.content}
           </div>
         ))}
-        {loading && <div className="flex justify-start"><div className="px-5 py-3 rounded-2xl bg-zinc-800 text-zinc-400 text-sm rounded-bl-md">Thinking...</div></div>}
+        {isThinking && <div className="bg-zinc-900 p-3 rounded-2xl w-fit text-sm animate-pulse">Thinking...</div>}
+        <div ref={bottomRef} />
       </div>
-      <div className="p-4 border-t border-zinc-800/50">
-        <div className="flex gap-3 items-center">
-          <div className="flex-1 bg-zinc-900 rounded-full flex items-center px-5 py-1 border border-zinc-800">
-            <input className="flex-1 bg-transparent py-3 outline-none placeholder:text-zinc-500" placeholder="Ask DevCraft anything..." value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && sendMessage()} />
-            <button onClick={() => fileRef.current?.click()} className="ml-3 text-xl">📎</button>
-            <input type="file" ref={fileRef} hidden />
-          </div>
-          <button onClick={() => sendMessage()} className="bg-white text-black px-7 py-3.5 rounded-full font-bold">Send</button>
-        </div>
+
+      {/* Input */}
+      <div className="p-3 border-t border-zinc-800 flex gap-2">
+        <input
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleSend(input)}
+          placeholder="Ask anything..."
+          className="flex-1 bg-zinc-900 rounded-full px-4 py-3 text-[15px] outline-none"
+        />
+        <button
+          onClick={() => handleSend(input)}
+          className="bg-white text-black rounded-full px-6 font-bold"
+        >
+          ↑
+        </button>
       </div>
-    </div>
+    </main>
   );
 }
