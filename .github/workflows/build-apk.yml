@@ -31,19 +31,23 @@ jobs:
           VITE_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
       - name: Sync Capacitor
-        run: npx cap sync android
+        run: |
+          rm -rf out build android/app/src/main/assets/public
+          npx cap copy android
+          npx cap sync android
+        env:
+          NEXT_PUBLIC_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
       - name: FORCE Rename to DevCraft AI
         run: |
-          cat android/app/src/main/res/values/strings.xml
           sed -i 's/Nova AI/DevCraft AI/g' android/app/src/main/res/values/strings.xml
           cat android/app/src/main/res/values/strings.xml
 
       - name: Build Android
         run: |
-          chmod +x android/gradlew
           cd android
-          ./gradlew assembleDebug
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
