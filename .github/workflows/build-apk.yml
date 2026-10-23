@@ -28,15 +28,12 @@ jobs:
         run: npm run build
         env:
           NEXT_PUBLIC_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          VITE_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
       - name: Sync Capacitor
         run: |
-          rm -rf out build android/app/src/main/assets/public
+          rm -rf android/app/src/main/assets/public
           npx cap copy android
           npx cap sync android
-        env:
-          NEXT_PUBLIC_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
       - name: FORCE Rename to DevCraft AI
         run: |
@@ -47,7 +44,7 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
+          ./gradlew assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
