@@ -8,13 +8,11 @@ export default function Page() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  
-  // SAFE - uses your GitHub Secret
   const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 
-  async function callGemini(text: string) {
+  async function tryModel(model: string, text: string) {
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -22,8 +20,19 @@ export default function Page() {
       }
     );
     const data = await res.json();
-    if (!res.ok) throw new Error(JSON.stringify(data).slice(0,300));
+    if (!res.ok) throw new Error(data.error?.message || JSON.stringify(data));
     return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  }
+
+  async function callGemini(text: string) {
+    if (!apiKey) throw new Error("API_KEY missing - add GEMINI_API_KEY in GitHub Secrets!");
+    // Try YOUR wanted 3.8 first, if fails use real 2.0
+    try {
+      return await tryModel("gemini-3.8-flash", text);
+    } catch (e: any) {
+      console.log("3.8 failed, falling back to 2.0", e.message);
+      return await tryModel("gemini-2.0-flash", text);
+    }
   }
 
   async function sendMessage() {
@@ -36,9 +45,10 @@ export default function Page() {
       const botText = await callGemini(text);
       setMessages(p => [...p, { role: "bot", text: botText }]);
     } catch (err: any) {
-      setMessages(p => [...p, { role: "bot", text: "Error: " + err.message }]);
+      setMessages(p => [...p, { role: "bot", text: "Error: " + err.message.slice(0,250) }]);
+    } finally {
+      setLoading(false); // THIS fixes stuck forever
     }
-    setLoading(false);
   }
 
   return (
