@@ -3,10 +3,12 @@ import { useState, useRef, useEffect } from "react";
 type Message = { role: 'user' | 'assistant'; content: string };
 
 const MODELS = [
-  "gemini-3.8-flash",
+  "gemini-2.0-flash-lite", // FASTEST FIRST!
   "gemini-2.0-flash",
+  "gemini-2.5-flash",
   "gemini-1.5-flash",
-  "gemini-2.0-flash-lite"
+  "gemini-1.5-flash-8b",
+  "gemini-3.8-flash",
 ];
 
 const API_KEYS = [
@@ -15,104 +17,110 @@ const API_KEYS = [
   process.env.NEXT_PUBLIC_GEMINI_KEY_3,
 ].filter(Boolean) as string[];
 
+const WELCOME = "Hey, I'm DevCraft AI ✨ Super fast now!";
+
 export default function Home() {
-  const [messages, setMessages] = useState<Message[]>([{ role: 'assistant', content: "Hey, I'm DevCraft AI ✨ Your super assistant. What should we build today?" }]);
+  const [messages, setMessages] = useState<Message[]>([{ role: 'assistant', content: WELCOME }]);
   const [input, setInput] = useState(''); 
   const [isThinking, setIsThinking] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, isThinking]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+
+  const clearCache = () => {
+    setMessages([{ role: 'assistant', content: WELCOME }]);
+    setInput('');
+    localStorage.clear();
+    sessionStorage.clear();
+  };
+
+  const streamTry = async (apiKey: string, model: string, history: any, onChunk: (t:string)=>void) => {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`, {
+      method: "POST", 
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ 
+        systemInstruction: { parts: [{ text: `You are DevCraft AI. TODAY: ${new Date().toDateString()}. USA: Donald J Trump 47th. Nigeria: Bola Tinubu. Be short, helpful, fast.` }] },
+        contents: history
+      })
+    });
+    if (!res.ok) throw new Error("fail");
+    const reader = res.body?.getReader();
+    const decoder = new TextDecoder();
+    while (true) {
+      const { done, value } = await reader!.read();
+      if (done) break;
+      const chunk = decoder.decode(value);
+      for (const line of chunk.split("\n")) {
+        if (line.startsWith("data: ")) {
+          try {
+            const json = JSON.parse(line.slice(6));
+            const t = json.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (t) onChunk(t);
+          } catch {}
+        }
+      }
+    }
+  };
 
   const handleSend = async (text: string) => {
-    if (!text.trim()) return; 
+    if (!text.trim() || isThinking) return; 
     const userText = text.trim();
-    const newMessages = [...messages, { role: 'user' as const, content: userText }];
-    setMessages(newMessages); 
+    setMessages(prev => [...prev, { role: 'user', content: userText }, { role: 'assistant', content: "" }]); 
     setInput(''); 
     setIsThinking(true);
 
-    // Instant math 1+8 = 9
-    const mathRegex = /^[\d\s+\-*/().%]+$/;
-    if (mathRegex.test(userText) && /[+\-*/]/.test(userText)) {
-      try { 
-        const r = Function(`"use strict"; return (${userText})`)(); 
-        if (isFinite(r)) { 
-          setMessages(prev => [...prev, { role: 'assistant', content: String(r) }]); 
-          setIsThinking(false); 
-          return; 
-        } 
-      } catch {}
-    }
-
-    const todayStr = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-
-    // BUILD CHAT HISTORY FOR GEMINI - So "What about Nigeria" understands!
-    const chatHistory = newMessages.slice(-8).map(m => ({
+    const todayStr = new Date().toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+    const chatHistory = [...messages, { role: 'user' as const, content: userText }].slice(-6).map(m => ({
       role: m.role === 'user' ? 'user' : 'model',
       parts: [{ text: m.content }]
     }));
 
-    let answered = false;
-    for (const apiKey of API_KEYS) {
+    let fullText = "";
+    const update = (t:string) => {
+      fullText += t;
+      setMessages(prev => {
+        const copy = [...prev];
+        copy[copy.length - 1] = { role: 'assistant', content: fullText };
+        return copy;
+      });
+    };
+
+    let ok = false;
+    // Try fastest model first with each key - SUPER FAST like me!
+    for (const key of API_KEYS) {
       for (const model of MODELS) {
         try {
-          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
-            method: "POST", 
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ 
-              systemInstruction: { 
-                parts: [{ 
-                  text: `You are DevCraft AI ✨ built by DevCraft. You are NOT Gemini.
-
-                  TODAY: ${todayStr}
-
-                  PRESIDENTS - MEMORIZE:
-                  - USA President: Donald J. Trump, 47th, since Jan 20, 2025. VP: JD Vance. Former was Joe Biden 46th.
-                  - Nigeria President: Bola Ahmed Tinubu, since May 29, 2023.
-
-                  RULES:
-                  1. If user says "What about Nigeria?" after asking USA president, they mean Nigeria president! Answer: Tinubu.
-                  2. Keep answers SHORT, concise.
-                  3. Be friendly.` 
-                }] 
-              },
-              contents: chatHistory
-            })
-          });
-          const data = await res.json();
-          if (data.error) continue;
-          const response = data.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (response) {
-            setMessages(prev => [...prev, { role: 'assistant', content: response }]);
-            answered = true; break;
-          }
-        } catch { continue; }
+          await streamTry(key, model, chatHistory, update);
+          if (fullText) { ok = true; break; }
+        } catch {}
       }
-      if (answered) break;
+      if (ok) break;
     }
-    if (!answered) {
-      setMessages(prev => [...prev, { role: 'assistant', content: "All 12 tries busy, wait 10s and try again." }]);
+
+    if (!ok) {
+      setMessages(prev => {
+        const copy = [...prev];
+        copy[copy.length - 1] = { role: 'assistant', content: "All busy. Wait 5s and try again." };
+        return copy;
+      });
     }
     setIsThinking(false);
   };
 
   return (
-    <main className="flex flex-col h-screen bg-black text-white">
-      <div className="py-6 border-b border-zinc-900 text-center">
-        <h1 className="text-2xl font-extrabold tracking-wide">DEVCRAFT AI</h1>
-        <p className="text-sm text-zinc-500 mt-1">Your AI Companion</p>
+    <main style={{display:'flex', flexDirection:'column', height:'100vh', backgroundColor:'black', color:'white'}}>
+      <div style={{padding:'16px 20px', borderBottom:'1px solid #18181b', display:'flex', justifyContent:'space-between'}}>
+        <h1 style={{fontSize:'22px', fontWeight:'900', margin:0}}>DEVCRAFT AI</h1>
+        <button onClick={clearCache} style={{background:'#18181b', color:'#fff', border:'1px solid #27272a', borderRadius:'999px', padding:'8px 16px', fontSize:'12px', fontWeight:'700'}}>Clear 🗑️</button>
       </div>
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div style={{flex:1, overflowY:'auto', padding:'16px', display:'flex', flexDirection:'column', gap:'12px'}}>
         {messages.map((m, i) => (
-          <div key={i} className={`max-w-[85%] p-4 rounded-2xl text-[15px] leading-relaxed ${m.role === 'user' ? 'bg-white text-black ml-auto rounded-br-sm' : 'bg-zinc-900 text-white rounded-bl-sm'}`}>
-            {m.content}
-          </div>
+          <div key={i} style={{maxWidth:'85%', padding:'14px 16px', borderRadius:'18px', fontSize:'15px', background: m.role === 'user' ? 'white' : '#18181b', color: m.role === 'user' ? 'black' : 'white', alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start'}}>{m.content || "▍"}</div>
         ))}
-        {isThinking && <div className="bg-zinc-900 p-4 rounded-2xl w-fit text-sm animate-pulse">DevCraft is thinking...</div>}
         <div ref={bottomRef} />
       </div>
-      <div className="p-4 border-t border-zinc-900 flex gap-3 bg-black">
-        <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSend(input)} placeholder="Ask DevCraft anything..." className="flex-1 bg-zinc-900 rounded-full px-5 py-3.5 outline-none text-sm placeholder:text-zinc-500" />
-        <button onClick={() => handleSend(input)} className="bg-white text-black rounded-full px-7 font-bold text-sm">Send</button>
+      <div style={{padding:'16px', borderTop:'1px solid #18181b', display:'flex', gap:'10px'}}>
+        <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSend(input)} placeholder="Ask DevCraft..." style={{flex:1, background:'#18181b', borderRadius:'999px', padding:'14px 20px', border:'none', outline:'none', color:'white'}} />
+        <button onClick={() => handleSend(input)} style={{background:'white', color:'black', borderRadius:'999px', padding:'0 24px', fontWeight:'800', border:'none'}}>Send</button>
       </div>
     </main>
   );
